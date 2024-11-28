@@ -1,0 +1,120 @@
+Car AsBuilt Detective
+
+This is a tool for finding information in the AsBuilt data
+of the vehicles. 
+The tool works with the data from the online database at
+https://www.motorcraftservice.com/asbuilt
+It requires Python 3.7 or later.
+
+It was written with the specific purpose of finding the bits
+in the AsBuilt data that correspond to the fuel tank size of
+the 2023-2024 (as of now) Ford Supeduty F-350 trucks.
+But it can be used for finding any other information that
+could be identified by detecting similarities and differneces
+across AsBuilt data of various vehicles.
+
+Here are the basic guidelines on how to use it.
+
+1.
+Let's start w/ the assumption that for all F-350 w/ gas engines
+the information will be stored at the same place in the AsBuilt
+data. In the pre-2023 models the tank size was encoded in 1/10
+liters in the IPC module data. For example:
+34g = 128.7l = 0x507 = 010100000111b
+48g = 181.7l = 0x719 = 011100011001b
+In the 2023-2024 vehicles the value is not populated, and if
+set it no longer works. Instead, the information, apparently,
+has to come from the PCM module.
+Perhaps, that same value is stored in the PCM's AsBuilt
+data or they have some selector (can be 2-3bits) to select
+one of the pre-set tank sizes (34g, 48g, 29g, maybe more).
+
+2.
+We can find VINs and specs of the F-350 on sale by searching
+the Internet. Using VINs we can retrieve the vehicle default 
+AsBuilt data from the https://www.motorcraftservice.com/asbuilt 
+site. Let's find multiple examples of the AsBuilt for vehicles
+w/ the 34g tank and save them in the 34g folder. Then find
+several examples of the data for the 48g tank vehicles and save
+in the 48g folder.
+Note: the tool expects the plain text files, just cut/paste
+the data table from the site into a file for each vehicle
+(don't use unicode, see examples).
+
+3.
+Basing on the assumptions made in 1 use the tool to explore
+and find matches. For example, let's use the tool to find
+the same bits for all 34g tank vehicles (files in 34g folder):
+  python3 cadet.py --print-same 34g 12
+In the command above:
+34g - folder name where to scan for files w/ the same data bits
+12 - the minimum length of the bit sequence we are looking for
+There are a lot of matches. Let's filter out all bits not matching
+the expected fuel tank size value 010100000111:
+  python3 cadet.py --print-same 34g 12 --add-value-filter 010100000111
+We get:
+---------
+Bitmask for data bits that are the same across files in 34g
+Value filter: 010100000111
+  716-19-01: 0001 1111 1111 1110 0000 0000 0000 0000 0001 1111
+  716-19-02: 1111 1110 0000 0000 0000 0000 0001 1111 1111 1110
+  716-19-03: 0000 0000 0000 0000 0001 1111 1111 1110 0000 0000
+  716-19-04: 0000 0000 0001 1111 1111 1110 0000 0000 0000 0000
+  716-19-05: 0000 0000 0000 0000 0000 0000 0000 0000 0001 1111
+  716-19-06: 1111 1110 0000 0000 0000 0000 0001 1111 1111 1110
+  716-19-07: 0000 0000 0000 0000 0001 1111 1111 1110 0000 0000
+
+  726-78-01: 0111 1111 1111 1000 0000 0000 0000 0000 0000 0000
+---------
+That's more manageable, but still doesn't look aligned and there
+are too many matches. Let's try to do the same for 48g tank vehicles.
+  python3 cadet.py --print-same 48g 12 --add-value-filter 011100011001
+We get:
+---------
+Bitmask for data bits that are the same across files in 48g
+Value filter: 011100011001
+  Nothing was found
+---------
+It seems like no luck here. The tank size is simply nowhere there anymore
+(at least not in the old format). Now, let's see if it could be encoded
+w/ 3 bits. It might look impossible to find at first, but what if we:
+- mask only the bits similar across all files for 34g tank cars
+- mask only the bits similar across all files for 48g tank cars
+- find their intersection
+- for the bits that are still masked scan all 3 bit long secuences
+  leaving masked only those that contain mismatching values (i.e.
+  000 in bits for 34g, while the same bits contain 001, 010 or 011
+  e.t.c. for 48g).
+Here's the comand for that:
+  python3 cadet.py --print-same-but-diff 34g 3
+We get:
+---------
+Bitmask for data bits staying same within all dirs, but
+containing 3-bit long values not matching those in 34g
+  7E0-165-16: 0000 0000 0000 0000 0000 0000 0000 0000 0111 0000
+  7E0-165-36: 0000 0000 0011 1000 0000 0000 0000 0000 0000 0000
+---------
+As we see the masked bits in the last octet of the 7E0-165-16 data
+chunk are well aligned. If we examine the data in those bits, we'll
+see that the bits contain 000 for 34g vehicles and 001 for the 48g
+ones. That looks like plausible match, however there are no guarantees.
+The value might not be used for the tank size. It could be, for example,
+used just for the long wheelbase detection (since it has to be 176in
+for trucks with 48g tanks).
+If googling for the location (7E0-165-16) of the data doesn't yield
+anything useful the only remaining option is to try changing it w/
+ForScan and see the results.
+
+4.
+In order to convert the location 7E0-165-16 to ForScan format:
+7E0 - stays the same
+165 - convert to hex (i.e. A5), then replace the first hex digit with
+      a letter 0->G, 1->H,... A->Q,... F->V, i.e. A5->Q5
+16  - do the same as above, i.e. 0x10 -> H0
+The forscan ID for the data block would be 7E0Q5H0.
+After convertig, perhaps, google it again and if still nothing there,
+then, maybe, it's the time to try if it works.
+
+Disclaimer: neither the tool, nor I have a clue what will happen if
+            you decide to try something new and untested, be careful
+            and do it at your own risk.
