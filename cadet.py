@@ -37,9 +37,9 @@ def read_data(file_name, ids):
 
             # Parse data and drop the last byte from the last group
             data_groups = data.split()
-            if not all(len(group) != 2 for group in data_groups):  # Check valid hex groups
-                #print(f"Expecting 3 groups of 4 hex digits each, got {data}")
-                continue
+            #if not all(len(group) != 2 for group in data_groups):  # Check valid hex groups
+            #    #print(f"Expecting 3 groups of 4 hex digits each, got {data}")
+            #    continue
             try:
                 str = ''.join(group for group in data_groups)
                 byte_data = bytearray.fromhex(str)
